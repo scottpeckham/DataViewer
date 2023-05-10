@@ -16,6 +16,7 @@ source("helpers.R")
  #  the capture table here is reduced in fields and has been joined to test data for a comp view
  #  test tables are complete with added attributes for filtering
 load("data/appdata.rda")
+load("data/gpsdata.rda")
 
     
 
@@ -27,40 +28,48 @@ load("data/appdata.rda")
     # Polygon home ranges (not implemented )#
     #hr <- st_read("/data/BurntRiver.gpkg",
     #              layer = "Homeranges")
-      
+    
+    # determine some bookends from the data #
+    #   these will be needed to modify the button options
+    herds <- unique(gps$Herd)
+    avail.dates <- gps %>% group_by(Herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime))
+    avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
+    avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
+    
   
 ui <- dashboardPage(
   dashboardHeader(title = "Tri-State Bighorn Test and Remove Data Viewer",titleWidth = 450),
   dashboardSidebar(img(src = "IMG_0368.JPG", height = 150, width = 200),
                    #strong("Idaho, Oregon, Washington"),
                    p("Capture, GPS, and health testing display BETA"),
-                   br(),
-                   dateRangeInput("dates",label="Date Range for GPS location display:", 
-                                  start  = "2023-02-01",
-                                  end    = "2023-03-01",
-                                  min="2021-01-01",max="2025-12-31"),
-                   br(),
+                   selectInput("selectHerd", label = "Bighorn Herd:", choices = herds,selected = ""),
                    selectInput("zcol", "Classify and Display GPS points by:", 
-                               choices = list("AnimalID" = "AnimalID", "Herd" = "Herd",
-                                              "Sex" = "Sex","Capture PCR Status"="CapturePCRStatus","Capture ELISA Status"="CaptureELISAStatus", "Capture Movi ELISA" = "Capture_cELISA"), selected = "Herd"),
-                   br(),
-                   checkboxGroupInput("checkHerd", label = "Bighorn Herd(s):", 
-                                      choices = list("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
-                                                     "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
-                                      selected = "Burnt River"),
-                   br(),
-                   selectInput("datachoice", label = "Choose data table to display:", 
-                                      choices = list("Capture" = "cap", "Study Sheep" = "studysheep", "PCR" = "pcr", "Serology" = "ser"),
-                                      selected = "Capture")
+                               choices = list("AnimalID" = "AnimalID",
+                                              "Sex" = "Sex","Capture PCR Status"="CapturePCRStatus","Capture ELISA Status"="CaptureELISAStatus", "Capture Movi ELISA" = "Capture_cELISA"), selected = "AnimalID"),
+                   
+                   uiOutput("subsetSelect"),
+                   actionButton("drawMap", "Load Map")
+                   
                    ),
   dashboardBody(
     
     tabsetPanel(type = "tabs",
                 tabPanel("Map", mapviewOutput("map",width="95%",height=800)),
-                tabPanel("Summary", DT::dataTableOutput("table"),
-                         downloadButton("downloadSummaryData", "Download")),
-                tabPanel("Data Table", DT::dataTableOutput("datatable"),
-                         downloadButton("downloadTableData", "Download"))
+                tabPanel( "Data Table", radioButtons("tableHerd", "Bighorn herd:",
+                                                     c("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
+                                                       "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
+                                                     inline=TRUE),
+                          selectInput("tablechoice", label = "Choose data table to display:", 
+                                                    choices = list("Capture" = "cap", "Study Sheep" = "studysheep", "PCR" = "pcr", "Serology" = "ser"),
+                                                    selected = "Capture"),
+                          DT::dataTableOutput("datatable"),
+                         downloadButton("downloadTableData", "Download")),
+                tabPanel("Summary", checkboxGroupInput("summaryHerd", label = "Bighorn Herd(s):", 
+                                           choices = list("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
+                                                          "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
+                                           selected = "Burnt River", inline=TRUE),
+                         DT::dataTableOutput("table"),
+                         downloadButton("downloadSummaryData", "Download"))
                 )
     
     )
@@ -68,33 +77,61 @@ ui <- dashboardPage(
 
 server <- function(input, output) {
   
+  # first deal with the reactive UI issue (i.e. we don't know number of years or dates)
+  output$subsetSelect <- renderUI({
+    
+    
+    mind=unlist(c(avail.dates[which(inputHerd() %in% avail.dates$Herd),2]))
+    maxd=unlist(c(avail.dates[which(inputHerd() %in% avail.dates$Herd),3]))
+    dateRangeInput("dates",label="Date Range for home range computation:",
+                   start  = "2023-01-01",
+                   end    = "2023-03-31",
+                   min=mind,
+                   max=maxd)
+    
+  })
+  
   # Reactive value for selected dataset ----
   summaryInput <- reactive({
-    summary.table %>% filter(Herd %in% input$checkHerd)
+    summary.table %>% filter(Herd %in% summaryHerd())
+  })
+  
+  summaryHerd <- reactive({
+    input$summaryHerd
   })
   
   inputHerd <- reactive({
-    input$checkHerd
+    input$selectHerd
+  })
+  
+  TableHerd <- reactive({
+    input$tableHerd
   })
   
   # Reactive value for data table choice
   datatableInput <- reactive({
-    switch(input$datachoice, 
+    switch(input$tablechoice, 
                    "cap" = cap,
                    "pcr" = pcr,
                    "ser" = ser,
-                   "studysheep" = studysheep) %>% filter(Herd %in% inputHerd())
+                   "studysheep" = studysheep) %>% filter(Herd %in% TableHerd())
+  })
+  
+  getData <- eventReactive(input$drawMap, {
+    t1 <- as.POSIXct(input$dates[1],tz="UTC")
+    t2 <- as.POSIXct(input$dates[2],tz="UTC")
+    gps.sf %>% filter(Herd %in% inputHerd()) %>% filter(acquisitiontime>= t1 & acquisitiontime <= t2)
+    
   })
   
   output$map<-renderLeaflet({
-    mindate <- as.POSIXct(input$dates[1],tz="UTC")
-    maxdate <- as.POSIXct(input$dates[2],tz="UTC")
+    
     zcol <- input$zcol
-    plotdata <- subset(gps.sf, acquisitiontime >= mindate & acquisitiontime <= maxdate) %>% filter(Herd %in% inputHerd())
+    plotdata <- getData()
+    
     n.animals <- length(unique(plotdata$AnimalID))
-    n.herd <- length(unique(plotdata$Herd))
-    n.pcr <- length(unique(plotdata$CapturePCRStatus))  # only 3 possible choices here
-    n.ser <- length(unique(plotdata$CaptureELISAStatus))
+    #n.pcr <- length(unique(plotdata$CapturePCRStatus))  # only 3 possible choices here
+    #n.ser <- length(unique(plotdata$CaptureELISAStatus))
     n.cel <- length(unique(plotdata$Capture_cELISA))
     
     qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
@@ -107,9 +144,9 @@ server <- function(input, output) {
     mycolors <- switch(input$zcol, 
                    "AnimalID" = id.colors,
                    "Sex" = sex.col,
-                   "Herd" = colorRampPalette(brewer.pal(8, "Set1"))(n.herd),
-                   "CapturePCRStatus" = colorRampPalette(brewer.pal(8, "RdYlGn"))(n.pcr),
-                   "CaptureELISAStatus" = colorRampPalette(brewer.pal(8, "RdYlGn"))(n.ser),
+                   #"Herd" = colorRampPalette(brewer.pal(8, "Set1"))(n.herd),
+                   "CapturePCRStatus" = brewer.pal(3, "RdYlGn"),
+                   "CaptureELISAStatus" = brewer.pal(3, "RdYlGn"),
                    "Capture_cELISA" = celisa.col
                    )
     
