@@ -136,7 +136,9 @@ server <- function(input, output) {
     
     qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
     col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
-    id.colors <- sample(col_vector, n.animals)
+    
+    if (n.animals < length(col_vector)) id.colors <- sample(col_vector, n.animals) else id.colors <- sample(col_vector, n.animals,
+                                                                                                        replace=TRUE)
     
     sex.col <- c("pink","blue")
     celisa.col <- colorRamps::matlab.like(7)
