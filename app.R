@@ -56,7 +56,7 @@ ui <- dashboardPage(
     tabsetPanel(type = "tabs",
                 tabPanel("Map", mapviewOutput("map",width="95%",height=800)),
                 tabPanel( "Data Table", radioButtons("tableHerd", "Bighorn herd:",
-                                                     c("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
+                                                     c("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Lostine" = "Lostine", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
                                                        "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
                                                      inline=TRUE),
                           selectInput("tablechoice", label = "Choose data table to display:", 
@@ -65,11 +65,24 @@ ui <- dashboardPage(
                           DT::dataTableOutput("datatable"),
                          downloadButton("downloadTableData", "Download")),
                 tabPanel("Summary", checkboxGroupInput("summaryHerd", label = "Bighorn Herd(s):", 
-                                           choices = list("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
+                                           choices = list("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Lostine" = "Lostine", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
                                                           "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
                                            selected = "Burnt River", inline=TRUE),
                          DT::dataTableOutput("table"),
-                         downloadButton("downloadSummaryData", "Download"))
+                         downloadButton("downloadSummaryData", "Download")),
+                tabPanel("Viewer Info", br(),
+                         hr(),
+                         h4(strong("Tool Description")),
+                         p(style="text-align: justify; font-size = 30px",
+                           "This application displays GPS data and health testing tables and summaries from our TriState database. 
+    
+    The map will draw for one herd at a time, and is responsive to changes in display category of the GPS points. To switch herds or get a new date range, simply click the Load Map button after making your selection. Note that this app doesn't show the full GPS set. 
+    It's a subsample of 25-40% depending on the number of locations per herd. The full set causes the application to run slower.
+    "),
+                        br(),
+                        p(style="text-align: justify; font-size = 25px",
+                          "On the table tab, you can choose the herd and data table you wish to view. These are searchable and you can apply filters to find specific values. Tables can be downloaded using the download button at the bottom.
+                          On the summary tab, you can view testing summaries by herd and download the summary table using the download button."))
                 )
     
     )
@@ -140,15 +153,43 @@ server <- function(input, output) {
     if (n.animals < length(col_vector)) id.colors <- sample(col_vector, n.animals) else id.colors <- sample(col_vector, n.animals,
                                                                                                         replace=TRUE)
     
+    # we want same color pattern for test results (having no "Detected" can swap colors between plots)
+    # colors for test results #
+    
+    # handle missing or NA in testing fields so they don't screw up the color mapping
+    plotdata$CaptureELISAStatus[which(plotdata$CaptureELISAStatus==""| is.na(plotdata$CaptureELISAStatus),arr.ind=TRUE)] <- "No Record"
+    plotdata$CapturePCRStatus[which(plotdata$CapturePCRStatus==""| is.na(plotdata$CapturePCRStatus),arr.ind=TRUE)] <- "No Record"
+    
+    tcol <- c(brewer.pal(3,'RdYlGn'),"#CCCCCC")
+    tcol.shuf <- c(tcol[1:2],tcol[4],tcol[3])
+    tcol <- tcol.shuf
+    pcr.col.map <- case_when(
+      plotdata$CapturePCRStatus == "Detected" ~ 1,
+      plotdata$CapturePCRStatus == "Indeterminate" ~ 2,
+      plotdata$CapturePCRStatus == "Not detected" ~ 3,
+      plotdata$CapturePCRStatus == "No Record" ~ 4
+    )
+    pcr.colors <- tcol[sort(unique(pcr.col.map))]
+    #pcr.colors <- tcol[pcr.col.map]
+    
+    ser.col.map <- case_when(
+      plotdata$CaptureELISAStatus == "Detected" ~ 1,
+      plotdata$CaptureELISAStatus == "Indeterminate" ~ 2,
+      plotdata$CaptureELISAStatus == "Not detected" ~ 4,
+      plotdata$CaptureELISAStatus == "No Record" ~ 3
+    )
+    ser.colors <- tcol[sort(unique(ser.col.map))]
+    
+    
     sex.col <- c("pink","blue")
     celisa.col <- colorRamps::matlab.like(7)
-                    
+    
     mycolors <- switch(input$zcol, 
                    "AnimalID" = id.colors,
                    "Sex" = sex.col,
                    #"Herd" = colorRampPalette(brewer.pal(8, "Set1"))(n.herd),
-                   "CapturePCRStatus" = brewer.pal(3, "RdYlGn"),
-                   "CaptureELISAStatus" = brewer.pal(3, "RdYlGn"),
+                   "CapturePCRStatus" = pcr.colors,
+                   "CaptureELISAStatus" = ser.colors,
                    "Capture_cELISA" = celisa.col
                    )
     

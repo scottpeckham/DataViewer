@@ -1,0 +1,13 @@
+name: DataViewer
+title: DataViewer
+username:
+account: scottpeckham
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 8646154
+bundleId: 7202919
+url: https://scottpeckham.shinyapps.io/DataViewer/
+when: 1683783777.20304
+lastSyncTime: 1683783777.20305
+asMultiple: FALSE
+asStatic: FALSE
