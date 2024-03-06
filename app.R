@@ -1,3 +1,5 @@
+# Shiny app to view GPS data and testing, capture tables from a DB snapshot
+
 library(shiny)
 library(shinydashboard)
 library(mapview)
@@ -54,7 +56,7 @@ ui <- dashboardPage(
   dashboardBody(
     
     tabsetPanel(type = "tabs",
-                tabPanel("Map", mapviewOutput("map",width="95%",height=800)),
+                tabPanel("Map", leafletOutput("map",width="95%",height=800)),
                 tabPanel( "Data Table", radioButtons("tableHerd", "Bighorn herd:",
                                                      c("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Lostine" = "Lostine", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
                                                        "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
