@@ -1,5 +1,5 @@
-# Shiny app to view GPS data and testing, capture tables from a DB snapshot
-
+# Shiny app to view GPS data and testing, --capture tables from a DB snapshot
+#   rev 11/1/24 to update to using path to db instead of snapshots
 library(shiny)
 library(shinydashboard)
 library(mapview)
@@ -10,6 +10,7 @@ library(leaflet)
 library(dplyr)
 library(DT)
 library(colorRamps)
+library(shinyFiles)
 
 source("helpers.R")
 
@@ -17,69 +18,62 @@ source("helpers.R")
  # contains gps, capture, serology, PCR, study sheep and summary table data frames
  #  the capture table here is reduced in fields and has been joined to test data for a comp view
  #  test tables are complete with added attributes for filtering
-load("data/appdata.rda")
-load("data/gpsdata.rda")
-
-    
-
-    # Convert the dataframe to a spatial object. Note that the
-    # crs= 4326 parameter assigns a WGS84 coordinate system to the 
-    # spatial object
-    gps.sf <- st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
-    
-    # Polygon home ranges (not implemented )#
-    #hr <- st_read("/data/BurntRiver.gpkg",
-    #              layer = "Homeranges")
-    
-    # determine some bookends from the data #
-    #   these will be needed to modify the button options
-    herds <- unique(gps$Herd)
-    avail.dates <- gps %>% group_by(Herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime))
-    avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
-    avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
-    
-  
+# load("data/appdata.rda")
+# load("data/gpsdata.rda")
+# 
+#     
+# 
+#     # Convert the dataframe to a spatial object. Note that the
+#     # crs= 4326 parameter assigns a WGS84 coordinate system to the 
+#     # spatial object
+#     gps.sf <- st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
+#     
+#     # Polygon home ranges (not implemented )#
+#     #hr <- st_read("/data/BurntRiver.gpkg",
+#     #              layer = "Homeranges")
+#     
+#     # determine some bookends from the data #
+#     #   these will be needed to modify the button options
+#     herds <- unique(gps$Herd)
+#     avail.dates <- gps %>% group_by(Herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime))
+#     avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
+#     avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
+#     
+#   
 ui <- dashboardPage(
   dashboardHeader(title = "Tri-State Bighorn Test and Remove Data Viewer",titleWidth = 450),
   dashboardSidebar(img(src = "IMG_0368.JPG", height = 150, width = 200),
                    #strong("Idaho, Oregon, Washington"),
                    p("Capture, GPS, and health testing display BETA"),
-                   selectInput("selectHerd", label = "Bighorn Herd:", choices = herds,selected = ""),
+                   shinyFilesButton("Btn_GetFile", "Choose SQLite database file" ,
+                                    title = "Please select a file:", multiple = FALSE,
+                                    buttonType = "default", class = NULL),
+                   selectInput("selectHerd", label = "Bighorn Herd:", choices = "",selected = ""),
                    selectInput("zcol", "Classify and Display GPS points by:", 
                                choices = list("AnimalID" = "AnimalID",
                                               "Sex" = "Sex","Capture PCR Status"="CapturePCRStatus","Capture ELISA Status"="CaptureELISAStatus", "Capture Movi ELISA" = "Capture_cELISA"), selected = "AnimalID"),
                    
                    uiOutput("subsetSelect"),
-                   actionButton("drawMap", "Load Map")
+                   actionButton("drawMap", "Load Data")
                    
                    ),
   dashboardBody(
     
     tabsetPanel(type = "tabs",
                 tabPanel("Map", leafletOutput("map",width="95%",height=800)),
-                tabPanel( "Data Table", radioButtons("tableHerd", "Bighorn herd:",
-                                                     c("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Lostine" = "Lostine", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
-                                                       "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
-                                                     inline=TRUE),
-                          selectInput("tablechoice", label = "Choose data table to display:", 
-                                                    choices = list("Capture" = "cap", "Study Sheep" = "studysheep", "PCR" = "pcr", "Serology" = "ser"),
-                                                    selected = "Capture"),
+                tabPanel( "GPS Data Table",
                           DT::dataTableOutput("datatable"),
                          downloadButton("downloadTableData", "Download")),
-                tabPanel("Summary", checkboxGroupInput("summaryHerd", label = "Bighorn Herd(s):", 
-                                           choices = list("Burnt River" = "Burnt River", "Lookout Mountain" = "Lookout Mountain", "Lostine" = "Lostine", "Yakima Canyon" = "Yakima Canyon", "Cleman Mountain" = "Cleman Mountain",
-                                                          "Lower Panther" = "Lower Panther Main Salmon", "Lower Salmon" = "Lower Salmon"),
-                                           selected = "Burnt River", inline=TRUE),
+                tabPanel("Study Sheep",
                          DT::dataTableOutput("table"),
-                         downloadButton("downloadSummaryData", "Download")),
+                         downloadButton("downloadSheepData", "Download")),
                 tabPanel("Viewer Info", br(),
                          hr(),
                          h4(strong("Tool Description")),
                          p(style="text-align: justify; font-size = 30px",
-                           "This application displays GPS data and health testing tables and summaries from our TriState database. 
+                           "This application displays GPS data and selected tables and summaries from our TriState database. 
     
-    The map will draw for one herd at a time, and is responsive to changes in display category of the GPS points. To switch herds or get a new date range, simply click the Load Map button after making your selection. Note that this app doesn't show the full GPS set. 
-    It's a subsample of 25-40% depending on the number of locations per herd. The full set causes the application to run slower.
+    The map will draw for one herd at a time, and is responsive to changes in display category of the GPS points. To switch herds or get a new date range, simply click the 'Load Data' button after making your selection. 
     "),
                         br(),
                         p(style="text-align: justify; font-size = 25px",
@@ -90,59 +84,189 @@ ui <- dashboardPage(
     )
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   
-  # first deal with the reactive UI issue (i.e. we don't know number of years or dates)
-  output$subsetSelect <- renderUI({
-    
-    
-    mind=unlist(c(avail.dates[which(inputHerd() %in% avail.dates$Herd),2]))
-    maxd=unlist(c(avail.dates[which(inputHerd() %in% avail.dates$Herd),3]))
-    dateRangeInput("dates",label="Date Range for home range computation:",
-                   start  = "2023-01-01",
-                   end    = "2023-03-31",
-                   min=mind,
-                   max=maxd)
-    
+  # handle file path button
+  volumes = getVolumes()
+  
+  fileval <- reactive({
+    l <- parseFilePaths(volumes, input$Btn_GetFile)
+    as.character(l$datapath)
   })
   
-  # Reactive value for selected dataset ----
-  summaryInput <- reactive({
-    summary.table %>% filter(Herd %in% summaryHerd())
+  observe({  
+    shinyFileChoose(input, "Btn_GetFile", roots = volumes, session = session)
+    
+    if(!is.null(input$Btn_GetFile)){
+      # browser()
+      
+      output$db_file <- renderText(fileval())
+      
+      
+    }
   })
   
-  summaryHerd <- reactive({
-    input$summaryHerd
+  # when we choose the DB file, populate some tables for menu items
+  observeEvent(fileval(), {
+    nfile <- fileval()
+    if (length(nfile)>0) {
+      
+      if (file.exists(nfile)) {
+        
+        # Connect to the data base read GPS table we need #
+        con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+        
+        # query for gps, don't read into memory
+        gps_db <- tbl(con, gps.tab.name) # reference to the table
+        
+        herds <- gps_db %>% select(Herd) %>% collect()
+        herds <- unique(herds)
+        
+        # close out DB connection
+        dbDisconnect(con)
+        
+        # upadte the list input(s)  
+        updateSelectInput(inputId = "selectHerd", choices = herds)
+      }
+    }
   })
   
   inputHerd <- reactive({
     input$selectHerd
-  })
-  
-  TableHerd <- reactive({
-    input$tableHerd
-  })
-  
-  # Reactive value for data table choice
-  datatableInput <- reactive({
-    switch(input$tablechoice, 
-                   "cap" = cap,
-                   "pcr" = pcr,
-                   "ser" = ser,
-                   "studysheep" = studysheep) %>% filter(Herd %in% TableHerd())
-  })
-  
-  getData <- eventReactive(input$drawMap, {
-    t1 <- as.POSIXct(input$dates[1],tz="UTC")
-    t2 <- as.POSIXct(input$dates[2],tz="UTC")
-    gps.sf %>% filter(Herd %in% inputHerd()) %>% filter(acquisitiontime>= t1 & acquisitiontime <= t2)
     
   })
+  
+  # first deal with the reactive UI issue (i.e. we don't know number of years or dates)
+  output$subsetSelect <- renderUI({
+    
+    # if we've chosen our DB file and herd then do this
+    nfile <- fileval()
+    herd <- inputHerd()
+    if (length(nfile)>0 & herd != "") {
+      
+      # query DB for data #
+      
+      # Connect to the data base read GPS table we need #
+      con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+      
+      #dbpath <- "/Users/scottp/DocumentsNew/BighornSheep/FY22-WSF-GIA/Databases/BHS_TriState.db"
+      dbpath <- nfile
+      
+      con <- dbConnect(RSQLite::SQLite(),dbpath, extended_types=TRUE)
+      
+      # query for gps, don't read into memory
+      gps_db <- tbl(con, gps.tab.name) # reference to the table
+      
+      herd <- input$selectHerd
+      
+      avail.dates <- gps_db %>% filter(Herd==herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime)) %>% collect()
+      avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
+      avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
+      
+      # close out DB connection
+      dbDisconnect(con)
+      
+      # some default dates for the input range, use current two weeks, starting back 2 days for typical lag in DB updates
+      endd <- strftime(Sys.time()-60*60*24*2,format="%Y-%m-%d")
+      startd <- strftime(Sys.time()-60*60*24*16,format="%Y-%m-%d")
+      
+      dateRangeInput("dates",label="Date range for display:",
+                     start  = startd,
+                     end    = endd,
+                     min=avail.dates$MinDate[1],
+                     max=avail.dates$MaxDate[1])
+    }
+    
+  })
+
+  
+  
+  getGPSData <- eventReactive(input$drawMap, {
+    # query DB for data #
+    gps.tab.name <- "AnimalID_GPS"
+    t1 <- as.POSIXct(input$dates[1],tz="UTC")
+    t2 <- as.POSIXct(input$dates[2],tz="UTC")
+    
+    # Connect to the data base read GPS table we need #
+    con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+    
+    # query for gps, don't read into memory
+    gps_db <- tbl(con, gps.tab.name) # reference to the table
+    
+    # query and store in data frame (note condition on gender input)
+      gps <- gps_db %>% filter(Herd==input$selectHerd) %>% 
+      filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% collect() 
+    
+    # close out DB connection
+    dbDisconnect(con)
+    
+    # remove missing values 
+    gps <- removeMissingGPS(gps)
+    
+    # DEAL WITH THE WEIRD CASES THAT CRASH HOME RANG CALCS
+    # Screen off any spurious Lat/Lon values that can crash HR calcs (there was one in MT for LPMS that bombed everything #
+    gps <- gps %>% filter(Latitude > 43.5 & Latitude < 47.5 & Longitude > -121.5 & Longitude < -113)
+    
+    # LPMS has a weirdo point so we screen out anything east of lon -113
+    gps <- gps %>% filter(Longitude < -113.0)
+    
+    # LS has a weirdo point so we screen out anything east of lon -113
+    gps <- gps %>% filter(!(AnimalID == "20LS49" & Latitude < 44.4))
+    
+    # remove duplicates if there are any
+    gps <- distinct(gps)
+    
+    # crs= 4326 parameter assigns a WGS84 coordinate system 
+    st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
+    
+  })
+  
+  getSheepData <- eventReactive(input$drawMap, {
+    
+    plotdata <- getGPSData()
+    animals <- unique(plotdata$AnimalID)
+    
+    tab.name <- "TriState_StudySheep"
+    
+    # Connect to the data base read GPS table we need #
+    con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+    
+    # query for gps, don't read into memory
+    tab_db <- tbl(con, tab.name) # reference to the table
+    
+    tab_db %>% filter(Herd==input$selectHerd) %>% filter(AnimalID %in% animals) %>% collect() 
+    
+  })
+  
+  getGPSDataOutput <- eventReactive(input$drawMap, {
+    # query DB for data #
+    gps.tab.name <- "AnimalID_GPS"
+    t1 <- as.POSIXct(input$dates[1],tz="UTC")
+    t2 <- as.POSIXct(input$dates[2],tz="UTC")
+    
+    # Connect to the data base read GPS table we need #
+    con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+    
+    # query for gps, don't read into memory
+    gps_db <- tbl(con, gps.tab.name) # reference to the table
+    
+    # query and store in data frame (note condition on gender input)
+    gps <- gps_db %>% filter(Herd==input$selectHerd) %>% 
+      filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% collect() 
+    
+    # close out DB connection
+    dbDisconnect(con)
+    
+    return(gps)
+    
+  })
+  
+  loadnew <- observeEvent(input$drawMap,{
   
   output$map<-renderLeaflet({
     
     zcol <- input$zcol
-    plotdata <- getData()
+    plotdata <- getGPSData()
     
     n.animals <- length(unique(plotdata$AnimalID))
     #n.pcr <- length(unique(plotdata$CapturePCRStatus))  # only 3 possible choices here
@@ -201,33 +325,37 @@ server <- function(input, output) {
   })
   
   output$table <- DT::renderDataTable({
-    DT::datatable(summaryInput())
-  })
-  
-  output$datatable <- DT::renderDataTable({
-    DT::datatable(datatableInput(),options = list(
+    DT::datatable(getSheepData(),options = list(
       pageLength=10, scrollX='400px'), filter = 'top')
   })
   
-  # Downloadable csv of selected summary data ----
-  output$downloadSummaryData <- downloadHandler(
-    filename = function() {
-      paste(inputHerd(), "Summary.csv", sep = "")
-    },
-    content = function(file) {
-      write.csv(summaryInput(), file, row.names = FALSE)
-    }
-  )
+  output$datatable <- DT::renderDataTable({
+    DT::datatable(getGPSData(),options = list(
+      pageLength=10, scrollX='400px'), filter = 'top')
+  })
   
-  # Downloadable csv of selected table dataset ----
+  # # Downloadable csv of selected summary data ----
+  # output$downloadSummaryData <- downloadHandler(
+  #   filename = function() {
+  #     paste(inputHerd(), "Summary.csv", sep = "")
+  #   },
+  #   content = function(file) {
+  #     write.csv(summaryInput(), file, row.names = FALSE)
+  #   }
+  # )
+  # 
+  # Downloadable csv of selected gps dataset ----
   output$downloadTableData <- downloadHandler(
     filename = function() {
-      paste(inputHerd(),input$datachoice, "Table.csv", sep = "")
+      paste(inputHerd(), "Table.csv", sep = "")
     },
     content = function(file) {
-      write.csv(datatableInput(), file, row.names = FALSE)
+      write.csv(getGPSDataOutput(), file, row.names = FALSE)
     }
   )
+
+
+})
 }
 
-shinyApp(ui, server)
+shinyApp(ui, server,options = list(launch.browser = TRUE))
