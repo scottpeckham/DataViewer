@@ -1,5 +1,7 @@
 # Shiny app to view GPS data and testing, --capture tables from a DB snapshot
 #   rev 11/1/24 to update to using path to db instead of snapshots
+#     Started V3 2/25/ to make it behave more interactively adding ability to select animals
+
 library(shiny)
 library(shinydashboard)
 library(mapview)
@@ -54,6 +56,7 @@ ui <- dashboardPage(
                                               "Sex" = "Sex","Capture PCR Status"="CapturePCRStatus","Capture ELISA Status"="CaptureELISAStatus", "Capture Movi ELISA" = "Capture_cELISA"), selected = "AnimalID"),
                    
                    uiOutput("subsetSelect"),
+                   uiOutput("animalSelect"),
                    actionButton("drawMap", "Load Data")
                    
                    ),
@@ -149,19 +152,19 @@ server <- function(input, output, session) {
       # Connect to the data base read GPS table we need #
       con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
       
-      #dbpath <- "/Users/scottp/DocumentsNew/BighornSheep/FY22-WSF-GIA/Databases/BHS_TriState.db"
+      dbpath <- "/Users/scottp/DocumentsNew/BighornSheep/FY22-WSF-GIA/Databases/BHS_TriState.db"
       dbpath <- nfile
       
       con <- dbConnect(RSQLite::SQLite(),dbpath, extended_types=TRUE)
       
-      # query for gps, don't read into memory
-      gps_db <- tbl(con, gps.tab.name) # reference to the table
-      
-      herd <- input$selectHerd
-      
-      avail.dates <- gps_db %>% filter(Herd==herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime)) %>% collect()
-      avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
-      avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
+        # query for gps, don't read into memory
+        gps_db <- tbl(con, gps.tab.name) # reference to the table
+        
+        herd <- input$selectHerd
+        
+        avail.dates <- gps_db %>% filter(Herd==herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime)) %>% collect()
+        avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
+        avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
       
       # close out DB connection
       dbDisconnect(con)
@@ -175,11 +178,50 @@ server <- function(input, output, session) {
                      end    = endd,
                      min=avail.dates$MinDate[1],
                      max=avail.dates$MaxDate[1])
+      
+      
     }
     
   })
 
-  
+  # first deal with the reactive UI issue (i.e. we don't know number of years or dates)
+  output$animalSelect <- renderUI({
+    
+    # if we've chosen our DB file and herd then do this
+    nfile <- fileval()
+    herd <- inputHerd()
+    if (length(nfile)>0 & herd != "") {
+      
+      # query DB for data #
+      
+      # Connect to the data base read GPS table we need #
+      con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+      
+      #dbpath <- "/Users/scottp/DocumentsNew/BighornSheep/FY22-WSF-GIA/Databases/BHS_TriState.db"
+      dbpath <- nfile
+      
+      con <- dbConnect(RSQLite::SQLite(),dbpath, extended_types=TRUE)
+      
+      # query for gps, don't read into memory
+      gps_db <- tbl(con, gps.tab.name) # reference to the table
+      
+      herd <- input$selectHerd
+      
+      avail.ID <- gps_db %>% filter(Herd==herd) %>% select(AnimalID) %>% collect() %>% unique()
+      avail.ID <- avail.ID[,1]
+      
+      # close out DB connection
+      dbDisconnect(con)
+      
+      # add checkbox for AnimalIDs
+      #checkboxGroupInput("aID", "AnimalID", avail.ID$AnimalID, selected = avail.ID$AnimalID, inline = FALSE,
+       #                  width = NULL)
+      selectInput(
+        "aID", "AnimalID", avail.ID$AnimalID, selected = avail.ID$AnimalID, multiple = TRUE,
+        selectize = FALSE)
+    }
+    
+  })
   
   getGPSData <- eventReactive(input$drawMap, {
     # query DB for data #
@@ -195,7 +237,7 @@ server <- function(input, output, session) {
     
     # query and store in data frame (note condition on gender input)
       gps <- gps_db %>% filter(Herd==input$selectHerd) %>% 
-      filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% collect() 
+      filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% filter(AnimalID %in% input$aID) %>% collect() 
     
     # close out DB connection
     dbDisconnect(con)
