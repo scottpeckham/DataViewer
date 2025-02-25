@@ -1,6 +1,6 @@
 # Shiny app to view GPS data and testing, --capture tables from a DB snapshot
 #   rev 11/1/24 to update to using path to db instead of snapshots
-#     Started V3 2/25/ to make it behave more interactively adding ability to select animals
+#     Started V3 2/25/ to make it behave more interactively adding ability to select animals, added last N locations
 
 library(shiny)
 library(shinydashboard)
@@ -16,31 +16,7 @@ library(shinyFiles)
 
 source("helpers.R")
 
-# load pre made data (saves reading from DB) #
- # contains gps, capture, serology, PCR, study sheep and summary table data frames
- #  the capture table here is reduced in fields and has been joined to test data for a comp view
- #  test tables are complete with added attributes for filtering
-# load("data/appdata.rda")
-# load("data/gpsdata.rda")
-# 
-#     
-# 
-#     # Convert the dataframe to a spatial object. Note that the
-#     # crs= 4326 parameter assigns a WGS84 coordinate system to the 
-#     # spatial object
-#     gps.sf <- st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
-#     
-#     # Polygon home ranges (not implemented )#
-#     #hr <- st_read("/data/BurntRiver.gpkg",
-#     #              layer = "Homeranges")
-#     
-#     # determine some bookends from the data #
-#     #   these will be needed to modify the button options
-#     herds <- unique(gps$Herd)
-#     avail.dates <- gps %>% group_by(Herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime))
-#     avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
-#     avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
-#     
+
 #   
 ui <- dashboardPage(
   dashboardHeader(title = "Tri-State Bighorn Test and Remove Data Viewer",titleWidth = 450),
@@ -54,7 +30,10 @@ ui <- dashboardPage(
                    selectInput("zcol", "Classify and Display GPS points by:", 
                                choices = list("AnimalID" = "AnimalID",
                                               "Sex" = "Sex","Capture PCR Status"="CapturePCRStatus","Capture ELISA Status"="CaptureELISAStatus", "Capture Movi ELISA" = "Capture_cELISA"), selected = "AnimalID"),
-                   
+                   radioButtons("radio", "Select locations by:",
+                                choices = c("Date Range" = "drange",
+                                            "Last N Locations" = "nlocations"),
+                                selected = "drange"),
                    uiOutput("subsetSelect"),
                    uiOutput("animalSelect"),
                    actionButton("drawMap", "Load Data")
@@ -76,12 +55,14 @@ ui <- dashboardPage(
                          p(style="text-align: justify; font-size = 30px",
                            "This application displays GPS data and selected tables and summaries from our TriState database. 
     
-    The map will draw for one herd at a time, and is responsive to changes in display category of the GPS points. To switch herds or get a new date range, simply click the 'Load Data' button after making your selection. 
+    The map will draw for one herd at a time, and is responsive to changes in display category of the GPS points. 
+    To switch herds or get a new date range or last N locations, simply click the 'Load Data' button after making your selection. You can turn on/off various layers using the tools on the left side of the map screen.
+    The first point in a trajectory will be circled in green, the last point in red.
     "),
                         br(),
                         p(style="text-align: justify; font-size = 25px",
-                          "On the table tab, you can choose the herd and data table you wish to view. These are searchable and you can apply filters to find specific values. Tables can be downloaded using the download button at the bottom.
-                          On the summary tab, you can view testing summaries by herd and download the summary table using the download button."))
+                          "On the study sheep tab, it will display the table entries for the sheep on the map (that are valid for your date or location selection). These are searchable and you can apply filters to find specific values. Tables can be downloaded using the download button at the bottom.
+                          On the summary tab (deprecated now, but can be returned), you can view testing summaries by herd and download the summary table using the download button."))
                 )
     
     )
@@ -173,11 +154,15 @@ server <- function(input, output, session) {
       endd <- strftime(Sys.time()-60*60*24*2,format="%Y-%m-%d")
       startd <- strftime(Sys.time()-60*60*24*16,format="%Y-%m-%d")
       
-      dateRangeInput("dates",label="Date range for display:",
+      # condition on the radio button to draw UI elements
+      switch(input$radio,
+        "drange" = dateRangeInput("dates",label="Date range for display:",
                      start  = startd,
                      end    = endd,
                      min=avail.dates$MinDate[1],
-                     max=avail.dates$MaxDate[1])
+                     max=avail.dates$MaxDate[1]),
+        "nlocations" =  numericInput("lastNloc", "Number of locations:",
+                                  value = 10, min=0))
       
       
     }
@@ -226,6 +211,8 @@ server <- function(input, output, session) {
   getGPSData <- eventReactive(input$drawMap, {
     # query DB for data #
     gps.tab.name <- "AnimalID_GPS"
+    
+    
     t1 <- as.POSIXct(input$dates[1],tz="UTC")
     t2 <- as.POSIXct(input$dates[2],tz="UTC")
     
@@ -235,28 +222,19 @@ server <- function(input, output, session) {
     # query for gps, don't read into memory
     gps_db <- tbl(con, gps.tab.name) # reference to the table
     
-    # query and store in data frame (note condition on gender input)
-      gps <- gps_db %>% filter(Herd==input$selectHerd) %>% 
-      filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% filter(AnimalID %in% input$aID) %>% collect() 
+    # query and store in data frame (note condition on gender input), conditioning on radio button choice
+     gps <- switch(input$radio,
+             "drange" =  gps_db %>% filter(Herd==input$selectHerd) %>% 
+                        filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% filter(AnimalID %in% input$aID) %>% collect(),
+              "nlocations" = FetchLastNFixes(gps_db,input$lastNloc,ids=input$aID)
+     )
     
     # close out DB connection
     dbDisconnect(con)
     
-    # remove missing values 
-    gps <- removeMissingGPS(gps)
+    # remove missing values, duplicatses 
+    gps <- gps %>% removeMissingGPS() %>% distinct()
     
-    # DEAL WITH THE WEIRD CASES THAT CRASH HOME RANG CALCS
-    # Screen off any spurious Lat/Lon values that can crash HR calcs (there was one in MT for LPMS that bombed everything #
-    gps <- gps %>% filter(Latitude > 43.5 & Latitude < 47.5 & Longitude > -121.5 & Longitude < -113)
-    
-    # LPMS has a weirdo point so we screen out anything east of lon -113
-    gps <- gps %>% filter(Longitude < -113.0)
-    
-    # LS has a weirdo point so we screen out anything east of lon -113
-    gps <- gps %>% filter(!(AnimalID == "20LS49" & Latitude < 44.4))
-    
-    # remove duplicates if there are any
-    gps <- distinct(gps)
     
     # crs= 4326 parameter assigns a WGS84 coordinate system 
     st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
@@ -376,16 +354,16 @@ server <- function(input, output, session) {
       pageLength=10, scrollX='400px'), filter = 'top')
   })
   
-  # # Downloadable csv of selected summary data ----
-  # output$downloadSummaryData <- downloadHandler(
-  #   filename = function() {
-  #     paste(inputHerd(), "Summary.csv", sep = "")
-  #   },
-  #   content = function(file) {
-  #     write.csv(summaryInput(), file, row.names = FALSE)
-  #   }
-  # )
-  # 
+  # Downloadable csv of selected summary data ----
+  output$downloadSheepData <- downloadHandler(
+    filename = function() {
+      paste(inputHerd(), "StudySheep.csv", sep = "")
+    },
+    content = function(file) {
+      write.csv(getSheepData(), file, row.names = FALSE)
+    }
+  )
+
   # Downloadable csv of selected gps dataset ----
   output$downloadTableData <- downloadHandler(
     filename = function() {

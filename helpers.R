@@ -39,3 +39,13 @@ makeLinePointMap <- function(sf.dat){
     mapview(last.pts,cex=4.5,alpha=1,alpha.regions=0,color='red',label="acquisitiontime",legend=FALSE)
   
 }
+
+FetchLastNFixes <- function(tbl_db, n, ids=NULL) {
+  
+  # query for appropriate data
+  if (length(ids) > 0) {
+    gps <- tbl_db %>% filter(AnimalID %in% ids) %>% group_by(AnimalID) %>% slice_max(order_by="acquisitiontime",n=n) %>% collect() 
+  } else {
+    gps <- tbl_db %>% group_by(AnimalID) %>% distinct() %>% slice_max(order_by="acquisitiontime",n=n) %>% collect()
+  }
+}
