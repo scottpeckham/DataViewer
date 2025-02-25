@@ -57,7 +57,7 @@ ui <- dashboardPage(
     
     The map will draw for one herd at a time, and is responsive to changes in display category of the GPS points. 
     To switch herds or get a new date range or last N locations, simply click the 'Load Data' button after making your selection. You can turn on/off various layers using the tools on the left side of the map screen.
-    The first point in a trajectory will be circled in green, the last point in red.
+    The first point in a trajectory will be circled in green, the last point in red. You can click on points to obtain attributes about that location and animal.
     "),
                         br(),
                         p(style="text-align: justify; font-size = 25px",
