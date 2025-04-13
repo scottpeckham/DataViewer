@@ -1,4 +1,4 @@
-# Shiny app to view GPS data and testing, --capture tables from a DB snapshot
+# Shiny app to view GPS data basic animal data tables, --capture tables from a DB snapshot
 #   rev 11/1/24 to update to using path to db instead of snapshots
 #     Started V3 2/25/ to make it behave more interactively adding ability to select animals, added last N locations
 
@@ -13,9 +13,12 @@ library(dplyr)
 library(DT)
 library(colorRamps)
 library(shinyFiles)
+library(shinyWidgets)
 
 source("helpers.R")
 
+# Hard-coded name of GPS table (maybe make selectable later)
+gps.tab.name <- "AnimalID_GPS"
 
 #   
 ui <- dashboardPage(
@@ -201,9 +204,11 @@ server <- function(input, output, session) {
       # add checkbox for AnimalIDs
       #checkboxGroupInput("aID", "AnimalID", avail.ID$AnimalID, selected = avail.ID$AnimalID, inline = FALSE,
        #                  width = NULL)
-      selectInput(
-        "aID", "AnimalID", avail.ID$AnimalID, selected = avail.ID$AnimalID, multiple = TRUE,
-        selectize = FALSE)
+      # selectInput(
+      #   "aID", "AnimalID", avail.ID$AnimalID, selected = avail.ID$AnimalID, multiple = TRUE,
+      #   selectize = FALSE)
+      pickerInput("aID","AnimalID", choices=avail.ID$AnimalID,
+                  options=list(`live-search`=TRUE, actionsBox=TRUE,size=10),multiple = T)
     }
     
   })
