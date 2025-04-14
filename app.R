@@ -52,6 +52,9 @@ ui <- dashboardPage(
                 tabPanel("Study Sheep",
                          DT::dataTableOutput("table"),
                          downloadButton("downloadSheepData", "Download")),
+                tabPanel("Testing Results",
+                         DT::dataTableOutput("testtable"),
+                         downloadButton("downloadTestData", "Download")),
                 tabPanel("Viewer Info", br(),
                          hr(),
                          h4(strong("Tool Description")),
@@ -65,6 +68,7 @@ ui <- dashboardPage(
                         br(),
                         p(style="text-align: justify; font-size = 25px",
                           "On the study sheep tab, it will display the table entries for the sheep on the map (that are valid for your date or location selection). These are searchable and you can apply filters to find specific values. Tables can be downloaded using the download button at the bottom.
+                          The Testing Results tab will show a table of all the testing results for the AnimalIDs that were returned by the date range in your input criteria.
                           On the summary tab (deprecated now, but can be returned), you can view testing summaries by herd and download the summary table using the download button."))
                 )
     
@@ -259,7 +263,39 @@ server <- function(input, output, session) {
     # query for gps, don't read into memory
     tab_db <- tbl(con, tab.name) # reference to the table
     
-    tab_db %>% filter(Herd==input$selectHerd) %>% filter(AnimalID %in% animals) %>% collect() 
+    out.dat <- tab_db %>% filter(Herd==input$selectHerd) %>% filter(AnimalID %in% animals) %>% collect() 
+    
+    # close out DB connection
+    dbDisconnect(con)
+    
+    return(out.dat)
+    
+  })
+  
+  getTestData <- eventReactive(input$drawMap, {
+    
+    plotdata <- getGPSData()
+    animals <- unique(plotdata$AnimalID)
+    
+    pcr.name <- "TriState_Bacteriology"
+    ser.name <- "TriState_Serology"
+    
+    # Connect to the data base read GPS table we need #
+    con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+    
+    # query for gps, don't read into memory
+    pcr_db <- tbl(con, pcr.name) # reference to the table
+    ser_db <- tbl(con, ser.name)
+    
+    pcr.dat <- pcr_db %>% filter(AnimalID %in% animals) %>% collect() %>% dplyr::select(AnimalID,Sample_ID,SampleDate,WADDLNo,MoviPCR)
+    ser.dat <- ser_db %>% filter(AnimalID %in% animals) %>% collect() %>% dplyr::select(AnimalID,Sample_ID,SampleDate,WADDLNo,Movi_Elisa,Movi_Status)
+    
+    # close out DB connection
+    dbDisconnect(con)
+    
+    # join them together by ID and date, but don't exclude ones that don't match
+    out.dat <- full_join(pcr.dat,ser.dat,by=join_by(AnimalID,SampleDate),relationship="many-to-many",suffix=c(".PCR",".Serology"))
+    return(out.dat)
     
   })
   
@@ -359,6 +395,11 @@ server <- function(input, output, session) {
       pageLength=10, scrollX='400px'), filter = 'top')
   })
   
+  output$testtable <- DT::renderDataTable({
+    DT::datatable(getTestData(),options = list(
+      pageLength=10, scrollX='400px'), filter = 'top')
+  })
+  
   # Downloadable csv of selected summary data ----
   output$downloadSheepData <- downloadHandler(
     filename = function() {
@@ -366,6 +407,15 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       write.csv(getSheepData(), file, row.names = FALSE)
+    }
+  )
+  
+  output$downloadTestData <- downloadHandler(
+    filename = function() {
+      paste(inputHerd(), "TestData.csv", sep = "")
+    },
+    content = function(file) {
+      write.csv(getTestData(), file, row.names = FALSE)
     }
   )
 
