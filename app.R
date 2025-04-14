@@ -55,6 +55,9 @@ ui <- dashboardPage(
                 tabPanel("Testing Results",
                          DT::dataTableOutput("testtable"),
                          downloadButton("downloadTestData", "Download")),
+                tabPanel("Mortality Events",
+                         DT::dataTableOutput("morttable"),
+                         downloadButton("downloadMortData", "Download")),
                 tabPanel("Viewer Info", br(),
                          hr(),
                          h4(strong("Tool Description")),
@@ -299,6 +302,33 @@ server <- function(input, output, session) {
     
   })
   
+  
+  getMortData <- eventReactive(input$drawMap, {
+    
+    plotdata <- getGPSData()
+    animals <- unique(plotdata$AnimalID)
+    
+    mort.name <- "TriState_Mortality_Notifications"
+    
+    
+    # Connect to the data base read GPS table we need #
+    con <- dbConnect(RSQLite::SQLite(),fileval(), extended_types=TRUE)
+    
+    # query for gps, don't read into memory
+    mort_db <- tbl(con, mort.name) # reference to the table
+   
+    dr <- range(plotdata$acquisitiontime)
+    
+    mort.dat <- mort_db %>% filter(AnimalID %in% animals)  %>% collect() 
+    mort.dat <- mort.dat %>% filter(DateUTC >= dr[1] & DateUTC <= dr[2])
+    
+    # close out DB connection
+    dbDisconnect(con)
+    
+    return(mort.dat)
+    
+  })
+  
   getGPSDataOutput <- eventReactive(input$drawMap, {
     # query DB for data #
     gps.tab.name <- "AnimalID_GPS"
@@ -400,6 +430,11 @@ server <- function(input, output, session) {
       pageLength=10, scrollX='400px'), filter = 'top')
   })
   
+  output$morttable <- DT::renderDataTable({
+    DT::datatable(getMortData(),options = list(
+      pageLength=10, scrollX='400px'), filter = 'top')
+  })
+  
   # Downloadable csv of selected summary data ----
   output$downloadSheepData <- downloadHandler(
     filename = function() {
@@ -416,6 +451,15 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       write.csv(getTestData(), file, row.names = FALSE)
+    }
+  )
+  
+  output$downloadMortData <- downloadHandler(
+    filename = function() {
+      paste(inputHerd(), "MortData.csv", sep = "")
+    },
+    content = function(file) {
+      write.csv(getMortData(), file, row.names = FALSE)
     }
   )
 
