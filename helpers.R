@@ -1,5 +1,14 @@
 library(mapview)
+library(dplyr)
+library(sf)
+library(RSQLite)
 
+removeMissingGPS <- function(gps){
+  # check for missing lat/lon and drop #
+  missing.loc <- which(is.na(gps$Latitude),arr.ind=TRUE)
+  if (length(missing.loc) > 0) gps <- gps[-(missing.loc),]
+  return(gps)
+}
 
 makeMap <- function(data, zcol="AnimalID",colors,alpha=0.8) {
   
