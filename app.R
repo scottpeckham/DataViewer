@@ -113,7 +113,7 @@ server <- function(input, output, session) {
         # query for gps, don't read into memory
         gps_db <- tbl(con, gps.tab.name) # reference to the table
         
-        herds <- gps_db %>% select(Herd) %>% collect()
+        herds <- gps_db %>% dplyr::select(Herd) %>% collect()
         herds <- unique(herds)
         
         # close out DB connection
@@ -153,7 +153,7 @@ server <- function(input, output, session) {
         
         herd <- input$selectHerd
         
-        avail.dates <- gps_db %>% filter(Herd==herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime)) %>% collect()
+        avail.dates <- gps_db %>% dplyr::filter(Herd==herd) %>% summarise(MinDate=min(acquisitiontime),MaxDate=max(acquisitiontime)) %>% collect()
         avail.dates$MinDate <- strftime(avail.dates$MinDate, format="%Y-%m-%d", tz="UTC")
         avail.dates$MaxDate <- strftime(avail.dates$MaxDate, format="%Y-%m-%d", tz="UTC")
       
@@ -202,7 +202,7 @@ server <- function(input, output, session) {
       
       herd <- input$selectHerd
       
-      avail.ID <- gps_db %>% filter(Herd==herd) %>% select(AnimalID) %>% collect() %>% unique()
+      avail.ID <- gps_db %>% dplyr::filter(Herd==herd) %>% dplyr::select(AnimalID) %>% collect() %>% unique()
       avail.ID <- avail.ID[,1]
       
       # close out DB connection
@@ -236,8 +236,8 @@ server <- function(input, output, session) {
     
     # query and store in data frame (note condition on gender input), conditioning on radio button choice
      gps <- switch(input$radio,
-             "drange" =  gps_db %>% filter(Herd==input$selectHerd) %>% 
-                        filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% filter(AnimalID %in% input$aID) %>% collect(),
+             "drange" =  gps_db %>% dplyr::filter(Herd==input$selectHerd) %>% 
+                        dplyr::filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% dplyr::filter(AnimalID %in% input$aID) %>% collect(),
               "nlocations" = FetchLastNFixes(gps_db,input$lastNloc,ids=input$aID)
      )
     
@@ -266,7 +266,7 @@ server <- function(input, output, session) {
     # query for gps, don't read into memory
     tab_db <- tbl(con, tab.name) # reference to the table
     
-    out.dat <- tab_db %>% filter(Herd==input$selectHerd) %>% filter(AnimalID %in% animals) %>% collect() 
+    out.dat <- tab_db %>% dplyr::filter(Herd==input$selectHerd) %>% dplyr::filter(AnimalID %in% animals) %>% collect() 
     
     # close out DB connection
     dbDisconnect(con)
@@ -290,8 +290,8 @@ server <- function(input, output, session) {
     pcr_db <- tbl(con, pcr.name) # reference to the table
     ser_db <- tbl(con, ser.name)
     
-    pcr.dat <- pcr_db %>% filter(AnimalID %in% animals) %>% collect() %>% dplyr::select(AnimalID,Sample_ID,SampleDate,WADDLNo,MoviPCR)
-    ser.dat <- ser_db %>% filter(AnimalID %in% animals) %>% collect() %>% dplyr::select(AnimalID,Sample_ID,SampleDate,WADDLNo,Movi_Elisa,Movi_Status)
+    pcr.dat <- pcr_db %>% dplyr::filter(AnimalID %in% animals) %>% collect() %>% dplyr::select(AnimalID,Sample_ID,SampleDate,WADDLNo,MoviPCR)
+    ser.dat <- ser_db %>% dplyr::filter(AnimalID %in% animals) %>% collect() %>% dplyr::select(AnimalID,Sample_ID,SampleDate,WADDLNo,Movi_Elisa,Movi_Status)
     
     # close out DB connection
     dbDisconnect(con)
@@ -319,8 +319,8 @@ server <- function(input, output, session) {
    
     dr <- range(plotdata$acquisitiontime)
     
-    mort.dat <- mort_db %>% filter(AnimalID %in% animals)  %>% collect() 
-    mort.dat <- mort.dat %>% filter(DateUTC >= dr[1] & DateUTC <= dr[2])
+    mort.dat <- mort_db %>% dplyr::filter(AnimalID %in% animals)  %>% collect() 
+    mort.dat <- mort.dat %>% dplyr::filter(DateUTC >= dr[1] & DateUTC <= dr[2])
     
     # close out DB connection
     dbDisconnect(con)
@@ -342,8 +342,8 @@ server <- function(input, output, session) {
     gps_db <- tbl(con, gps.tab.name) # reference to the table
     
     # query and store in data frame (note condition on gender input)
-    gps <- gps_db %>% filter(Herd==input$selectHerd) %>% 
-      filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% collect() 
+    gps <- gps_db %>% dplyr::filter(Herd==input$selectHerd) %>% 
+      dplyr::filter(acquisitiontime>= t1 & acquisitiontime <= t2) %>% collect() 
     
     # close out DB connection
     dbDisconnect(con)
