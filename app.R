@@ -248,8 +248,15 @@ server <- function(input, output, session) {
     gps <- gps %>% removeMissingGPS() %>% distinct()
     
     
-    # crs= 4326 parameter assigns a WGS84 coordinate system 
-    st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
+    # crs= 4326 parameter assigns a WGS84 coordinate system
+      # save the coords so they show up in the attributes
+      long <- gps$Longitude
+      lat <- gps$Latitude
+    gps <- st_as_sf(gps, coords = c("Longitude", "Latitude"), crs = 4326)
+    gps$Longitude <- long
+    gps$Latitude <- lat
+    
+    return(gps)
     
   })
   
